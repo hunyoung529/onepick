@@ -10,6 +10,18 @@ import {
 
 import { db } from '@/lib/firebase';
 
+function asRecord(v: unknown): Record<string, unknown> {
+  return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {};
+}
+
+function readString(v: unknown): string | null {
+  return typeof v === 'string' ? v : null;
+}
+
+function readNumber(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
 export type ExternalWorkItem = {
   platform: 'naver';
   id: string;
@@ -35,16 +47,16 @@ export async function getNaverSnapshotItems(date: string, take = 30): Promise<Ex
   const snap = await getDocs(q);
 
   return snap.docs.map((d) => {
-    const data = d.data() as any;
+    const data = asRecord(d.data() as unknown);
     return {
       platform: 'naver',
-      id: String(data.id),
-      title: data.title ?? null,
-      author: data.author ?? null,
-      thumbnail: data.thumbnail ?? null,
-      rating: typeof data.rating === 'number' ? data.rating : null,
-      weekday: data.weekday ?? null,
-      link: data.link ?? null,
+      id: String((data.id ?? '') as unknown),
+      title: readString(data.title),
+      author: readString(data.author),
+      thumbnail: readString(data.thumbnail),
+      rating: readNumber(data.rating),
+      weekday: readString(data.weekday),
+      link: readString(data.link),
     };
   });
 }
@@ -53,16 +65,16 @@ export async function getAnyNaverWorkById(id: string): Promise<ExternalWorkItem 
   const ref = doc(db, 'works', `naver_${String(id)}`);
   const snap = await getDoc(ref);
   if (!snap.exists()) return null;
-  const data = snap.data() as any;
+  const data = asRecord(snap.data() as unknown);
   return {
     platform: 'naver',
-    id: String(data.id),
-    title: data.title ?? null,
-    author: data.author ?? null,
-    thumbnail: data.thumbnail ?? null,
-    rating: typeof data.rating === 'number' ? data.rating : null,
-    weekday: data.weekday ?? null,
-    link: data.link ?? null,
+    id: String((data.id ?? id) as unknown),
+    title: readString(data.title),
+    author: readString(data.author),
+    thumbnail: readString(data.thumbnail),
+    rating: readNumber(data.rating),
+    weekday: readString(data.weekday),
+    link: readString(data.link),
   };
 }
 
@@ -70,9 +82,9 @@ export async function getNaverSnapshotMeta(date: string): Promise<{ date: string
   const ref = doc(db, 'externalRankings', 'naver', 'snapshots', date);
   const snap = await getDoc(ref);
   if (!snap.exists()) return null;
-  const data = snap.data() as any;
+  const data = asRecord(snap.data() as unknown);
   return {
     date,
-    count: typeof data.count === 'number' ? data.count : null,
+    count: readNumber(data.count),
   };
 }

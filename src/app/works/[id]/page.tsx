@@ -10,7 +10,6 @@ import {
   deleteDoc,
   doc,
   getDoc,
-  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -33,6 +32,14 @@ type CommentItem = {
   text: string;
   createdAt: unknown;
 };
+
+function asRecord(v: unknown): Record<string, unknown> {
+  return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {};
+}
+
+function readString(v: unknown): string {
+  return typeof v === 'string' ? v : '';
+}
 
 function workKey(platform: string, id: string) {
   return `${platform}_${id}`;
@@ -94,11 +101,11 @@ export default function WorkDetailPage({ params }: PageProps) {
     const unsub = onSnapshot(q, (snap) => {
       setComments(
         snap.docs.map((d) => {
-          const data = d.data() as any;
+          const data = asRecord(d.data() as unknown);
           return {
             id: d.id,
-            uid: data.uid ?? '',
-            text: data.text ?? '',
+            uid: readString(data.uid),
+            text: readString(data.text),
             createdAt: data.createdAt ?? null,
           };
         }),

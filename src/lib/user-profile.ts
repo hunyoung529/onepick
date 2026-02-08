@@ -10,6 +10,14 @@ import type { User } from 'firebase/auth';
 
 import { db } from '@/lib/firebase';
 
+function asRecord(v: unknown): Record<string, unknown> {
+  return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {};
+}
+
+function readString(v: unknown): string | null {
+  return typeof v === 'string' ? v : null;
+}
+
 export type UserProfile = {
   uid: string;
   email: string | null;
@@ -29,12 +37,12 @@ export function subscribeUserProfile(uid: string, onChange: (profile: UserProfil
       return;
     }
 
-    const data = snap.data() as any;
+    const data = asRecord(snap.data() as unknown);
     onChange({
       uid,
-      email: data.email ?? null,
-      providerId: data.providerId ?? null,
-      nickname: data.nickname ?? null,
+      email: readString(data.email),
+      providerId: readString(data.providerId),
+      nickname: readString(data.nickname),
     });
   });
 }
@@ -87,12 +95,14 @@ export async function setNicknameForUser(user: User, rawNickname: string): Promi
     }
 
     const currentUserSnap = await tx.get(userRef);
-    const currentNickname = (currentUserSnap.data() as any)?.nickname ?? null;
-    const currentNormalized = currentNickname ? normalizeNickname(String(currentNickname)) : null;
+    const currentUserData = asRecord(currentUserSnap.data() as unknown);
+    const currentNickname = readString(currentUserData.nickname);
+    const currentNormalized = currentNickname ? normalizeNickname(currentNickname) : null;
 
     const claimSnap = await tx.get(nicknameRef);
     if (claimSnap.exists()) {
-      const claimedUid = (claimSnap.data() as any)?.uid;
+      const claimData = asRecord(claimSnap.data() as unknown);
+      const claimedUid = readString(claimData.uid);
       if (claimedUid && claimedUid !== uid) {
         throw new Error('이미 사용 중인 닉네임입니다.');
       }
@@ -101,7 +111,7 @@ export async function setNicknameForUser(user: User, rawNickname: string): Promi
     if (currentNormalized && currentNormalized !== normalized) {
       const prevRef = doc(db, 'nicknames', currentNormalized);
       const prevSnap = await tx.get(prevRef);
-      const prevUid = prevSnap.exists() ? (prevSnap.data() as any)?.uid : null;
+      const prevUid = prevSnap.exists() ? readString(asRecord(prevSnap.data() as unknown).uid) : null;
       if (prevUid === uid) tx.delete(prevRef);
     }
 

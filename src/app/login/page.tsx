@@ -50,7 +50,10 @@ export default function LoginPage() {
       await signInWithPopup(auth, provider);
       router.push('/my');
     } catch (err: unknown) {
-      const maybeCode = typeof err === 'object' && err !== null && 'code' in err ? (err as any).code : undefined;
+      const maybeCode =
+        typeof err === 'object' && err !== null && 'code' in err
+          ? (err as { code?: unknown }).code
+          : undefined;
       if (maybeCode === 'auth/popup-blocked') {
         const provider = new GoogleAuthProvider();
         await signInWithRedirect(auth, provider);

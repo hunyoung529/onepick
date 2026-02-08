@@ -18,6 +18,18 @@ type FavoriteItem = {
   platform: string | null;
 };
 
+function asRecord(v: unknown): Record<string, unknown> {
+  return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {};
+}
+
+function readString(v: unknown): string | null {
+  return typeof v === 'string' ? v : null;
+}
+
+function readNumber(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
 export default function FavoritesPage() {
   const router = useRouter();
   const { user, loading } = useAuthUser();
@@ -35,14 +47,14 @@ export default function FavoritesPage() {
     const unsub = onSnapshot(q, (snap) => {
       setItems(
         snap.docs.map((d) => {
-          const data = d.data() as any;
+          const data = asRecord(d.data() as unknown);
           return {
-            id: String(data.id ?? d.id),
-            title: data.title ?? null,
-            author: data.author ?? null,
-            thumbnail: data.thumbnail ?? null,
-            rating: typeof data.rating === 'number' ? data.rating : null,
-            platform: data.platform ?? null,
+            id: String((data.id ?? d.id) as unknown),
+            title: readString(data.title),
+            author: readString(data.author),
+            thumbnail: readString(data.thumbnail),
+            rating: readNumber(data.rating),
+            platform: readString(data.platform),
           };
         }),
       );
