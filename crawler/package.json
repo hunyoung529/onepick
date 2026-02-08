@@ -1,0 +1,15 @@
+{
+  "name": "onepick-crawler",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "crawl:naver:weekday": "node naver-weekday.mjs",
+    "crawl:naver:weekday:enrich": "node naver-weekday-enrich.mjs",
+    "crawl:naver:weekday:tabs": "node naver-weekday-tabs.mjs",
+    "upload:naver:weekday:tabs": "node upload-naver-weekday-tabs.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.5.0",
+    "puppeteer": "^23.0.0"
+  }
+}
