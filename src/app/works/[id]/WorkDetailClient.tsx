@@ -175,7 +175,7 @@ export default function WorkDetailClient({ id, initialWork }: { id: string; init
       if (unsubVotes) unsubVotes();
       unsub();
     };
-  }, [key, user?.uid]);
+  }, [key, user]);
 
   const visibleComments = useMemo(() => {
     if (commentSort === 'latest') return comments;
@@ -468,6 +468,7 @@ export default function WorkDetailClient({ id, initialWork }: { id: string; init
             등록
           </button>
         </div>
+        {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
 
         <div className="mt-4 space-y-2">
           {comments.length === 0 ? <div className="text-sm text-zinc-500">댓글이 없습니다.</div> : null}
