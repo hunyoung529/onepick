@@ -49,7 +49,8 @@ async function fillMissingMetadataFromDetail(page, items) {
     const u = String(thumb);
     if (!u.startsWith('http')) return false;
     if (u.includes(`/webtoon/${id}/`)) return true;
-    return u.includes('image-comic.pstatic.net') && u.includes('/webtoon/') && u.includes('/thumbnail/');
+    if (u.includes(`titleId=${id}`)) return true;
+    return false;
   };
 
   const targets = items.filter(
@@ -60,7 +61,9 @@ async function fillMissingMetadataFromDetail(page, items) {
         !isValidThumbnailForId(it.thumbnail, it.id) ||
         !it.title ||
         isPlaceholderTitle(it.title) ||
-        typeof it.rating !== 'number'),
+        typeof it.rating !== 'number' ||
+        !Array.isArray(it.tags) ||
+        it.tags.length === 0),
   );
 
   const total = targets.length;
@@ -102,14 +105,48 @@ async function fillMissingMetadataFromDetail(page, items) {
           (document.querySelector('[class*="Rating"] em')?.textContent?.trim() ?? null) ||
           (document.querySelector('[class*="rating"] em')?.textContent?.trim() ?? null) ||
           null;
-        return { ogImage, ogTitle, ratingText };
+
+        const pickTags = () => {
+          const texts = new Set();
+          const candidates = [
+            ...Array.from(document.querySelectorAll('a[href*="genre"], a[href*="tag"], a[href*="keyword"], [class*="Tag"], [class*="tag"], [class*="genre"], [class*="Genre"]')),
+          ];
+          for (const el of candidates) {
+            const t = String(el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+            if (!t) continue;
+            const parts = t
+              .split(/[#\s,·|/]+/)
+              .map((x) => x.trim())
+              .filter(Boolean);
+            for (const p of parts) {
+              if (!p) continue;
+              if (p.length > 20) continue;
+              if (p.includes('&')) continue;
+              if (p.includes('장르') || p.includes('태그')) continue;
+              if (!/^[0-9A-Za-z가-힣]+$/.test(p)) continue;
+              texts.add(p);
+            }
+          }
+          return Array.from(texts).slice(0, 10);
+        };
+
+        return { ogImage, ogTitle, ratingText, tags: pickTags() };
       });
-      if ((!it.thumbnail || !isValidThumbnailForId(it.thumbnail, it.id)) && detailMeta.ogImage) it.thumbnail = detailMeta.ogImage;
+
+      if ((!it.thumbnail || !isValidThumbnailForId(it.thumbnail, it.id)) && detailMeta.ogImage) {
+        const u = String(detailMeta.ogImage);
+        if (u.startsWith('http') && (u.includes('/thumbnail/') || u.includes('image-comic.pstatic.net'))) {
+          it.thumbnail = u;
+        }
+      }
       if ((!it.title || isPlaceholderTitle(it.title)) && detailMeta.ogTitle) it.title = detailMeta.ogTitle;
       if (typeof it.rating !== 'number' && detailMeta.ratingText) {
         const m = String(detailMeta.ratingText).match(/\b(10(?:\.0+)?|\d(?:\.\d{1,2})?)\b/);
         const n = m ? Number.parseFloat(m[1]) : null;
         if (Number.isFinite(n) && n >= 0 && n <= 10) it.rating = n;
+      }
+      if ((!Array.isArray(it.tags) || it.tags.length === 0) && Array.isArray(detailMeta.tags) && detailMeta.tags.length > 0) {
+        it.tags = detailMeta.tags;
       }
     } catch {
       // ignore
@@ -196,6 +233,15 @@ async function crawlOneWeekdayTab(page, weekday) {
         }
       }
       return best;
+    };
+
+    const isValidThumbnailForId = (thumb, id) => {
+      if (!thumb || !id) return false;
+      const u = String(thumb);
+      if (!u.startsWith('http')) return false;
+      if (u.includes(`/webtoon/${id}/`)) return true;
+      if (u.includes(`titleId=${id}`)) return true;
+      return false;
     };
 
     const pickThumbnailFromContainer = (container, titleId) => {
@@ -305,7 +351,8 @@ async function crawlOneWeekdayTab(page, weekday) {
         container?.querySelector('.info .author')?.textContent?.trim() ||
         null;
 
-      const thumbnail = pickThumbnailFromContainer(container, titleId);
+      const picked = pickThumbnailFromContainer(container, titleId);
+      const thumbnail = isValidThumbnailForId(picked, titleId) ? picked : null;
       const rating = findRating(container);
 
       out.push({
@@ -317,6 +364,7 @@ async function crawlOneWeekdayTab(page, weekday) {
         rank,
         weekday: wd,
         link: absHref,
+        tags: [],
       });
     }
 

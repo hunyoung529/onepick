@@ -4,6 +4,7 @@ type FirestoreValue =
   | { stringValue: string }
   | { integerValue: string }
   | { doubleValue: number }
+  | { arrayValue: { values?: FirestoreValue[] } }
   | { nullValue: null }
   | { timestampValue: string };
 
@@ -43,6 +44,25 @@ function fvNumber(v: FirestoreValue | undefined): number | null {
     return Number.isFinite(n) ? n : null;
   }
   return null;
+}
+
+function readStringField(fields: Record<string, FirestoreValue> | null | undefined, name: string): string | null {
+  return fvString(fields?.[name]);
+}
+
+function readNumberField(fields: Record<string, FirestoreValue> | null | undefined, name: string): number | null {
+  return fvNumber(fields?.[name]);
+}
+
+function readStringArrayField(fields: Record<string, FirestoreValue> | null | undefined, name: string): string[] | null {
+  const v = fields?.[name];
+  if (!v || !('arrayValue' in v)) return null;
+  const values = v.arrayValue?.values ?? [];
+  const out = values
+    .map((x) => fvString(x) ?? '')
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0);
+  return out.length > 0 ? out : null;
 }
 
 async function runQueryAt(parentDocPath: string, structuredQuery: Record<string, unknown>): Promise<FirestoreRunQueryRow[]> {
@@ -89,7 +109,7 @@ export async function getLatestNaverSnapshotDateServer(): Promise<string | null>
 export async function getNaverSnapshotItemsByWeekdayServer(
   date: string,
   weekday: string,
-  take = 12,
+  take = 30,
 ): Promise<ExternalWorkItem[]> {
   const rows = await runQueryAt(`externalRankings/naver/snapshots/${date}`, {
     from: [{ collectionId: 'items', allDescendants: false }],
@@ -107,18 +127,19 @@ export async function getNaverSnapshotItemsByWeekdayServer(
     .map((r) => r.document)
     .filter(Boolean)
     .map((d) => {
-      const f = d!.fields ?? {};
+      const fields = (d!.fields ?? {}) as Record<string, FirestoreValue>;
       return {
         platform: 'naver' as const,
-        id: fvString(f.id) ?? '',
-        title: fvString(f.title),
-        author: fvString(f.author),
-        thumbnail: fvString(f.thumbnail),
-        rating: fvNumber(f.rating),
-        rank: fvNumber(f.rank),
-        weekday: fvString(f.weekday),
-        link: fvString(f.link),
-      };
+        id: readStringField(fields, 'id') ?? '',
+        title: readStringField(fields, 'title'),
+        author: readStringField(fields, 'author'),
+        thumbnail: readStringField(fields, 'thumbnail'),
+        rating: readNumberField(fields, 'rating'),
+        rank: readNumberField(fields, 'rank'),
+        weekday: readStringField(fields, 'weekday'),
+        link: readStringField(fields, 'link'),
+        tags: readStringArrayField(fields, 'tags'),
+      } satisfies ExternalWorkItem;
     })
     .filter((it) => Boolean(it.id));
 
@@ -141,18 +162,19 @@ export async function getNaverSnapshotItemsServer(date: string, take = 100): Pro
     .map((r) => r.document)
     .filter(Boolean)
     .map((d) => {
-      const f = d!.fields ?? {};
+      const fields = (d!.fields ?? {}) as Record<string, FirestoreValue>;
       return {
         platform: 'naver' as const,
-        id: fvString(f.id) ?? '',
-        title: fvString(f.title),
-        author: fvString(f.author),
-        thumbnail: fvString(f.thumbnail),
-        rating: fvNumber(f.rating),
-        rank: fvNumber(f.rank),
-        weekday: fvString(f.weekday),
-        link: fvString(f.link),
-      };
+        id: readStringField(fields, 'id') ?? '',
+        title: readStringField(fields, 'title'),
+        author: readStringField(fields, 'author'),
+        thumbnail: readStringField(fields, 'thumbnail'),
+        rating: readNumberField(fields, 'rating'),
+        rank: readNumberField(fields, 'rank'),
+        weekday: readStringField(fields, 'weekday'),
+        link: readStringField(fields, 'link'),
+        tags: readStringArrayField(fields, 'tags'),
+      } satisfies ExternalWorkItem;
     })
     .filter((it) => Boolean(it.id));
 
@@ -168,17 +190,17 @@ export async function getNaverSnapshotItemsServer(date: string, take = 100): Pro
 export async function getAnyNaverWorkByIdServer(id: string): Promise<ExternalWorkItem | null> {
   const doc = await getDocAt(`works/naver_${encodeURIComponent(String(id))}`);
   if (!doc) return null;
-  const f = doc.fields ?? {};
-  const work: ExternalWorkItem = {
+  const fields = (doc.fields ?? {}) as Record<string, FirestoreValue>;
+  return {
     platform: 'naver' as const,
-    id: fvString(f.id) ?? String(id),
-    title: fvString(f.title),
-    author: fvString(f.author),
-    thumbnail: fvString(f.thumbnail),
-    rating: fvNumber(f.rating),
-    rank: fvNumber(f.rank),
-    weekday: fvString(f.weekday),
-    link: fvString(f.link),
-  };
-  return work;
+    id: readStringField(fields, 'id') ?? String(id),
+    title: readStringField(fields, 'title'),
+    author: readStringField(fields, 'author'),
+    thumbnail: readStringField(fields, 'thumbnail'),
+    rating: readNumberField(fields, 'rating'),
+    rank: readNumberField(fields, 'rank'),
+    weekday: readStringField(fields, 'weekday'),
+    link: readStringField(fields, 'link'),
+    tags: readStringArrayField(fields, 'tags'),
+  } satisfies ExternalWorkItem;
 }

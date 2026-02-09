@@ -23,8 +23,16 @@ function readNumber(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+function readStringArray(v: unknown): string[] | null {
+  if (!Array.isArray(v)) return null;
+  const out = v
+    .map((x) => (typeof x === 'string' ? x.trim() : ''))
+    .filter((x) => x.length > 0);
+  return out.length > 0 ? out : null;
+}
+
 export type ExternalWorkItem = {
-  platform: 'naver';
+  platform: 'naver' | 'kakao';
   id: string;
   title: string | null;
   author: string | null;
@@ -33,6 +41,7 @@ export type ExternalWorkItem = {
   rank?: number | null;
   weekday: string | null;
   link: string | null;
+  tags?: string[] | null;
 };
 
 export async function getLatestNaverSnapshotDate(): Promise<string | null> {
@@ -60,6 +69,7 @@ export async function getNaverSnapshotItems(date: string, take = 30): Promise<Ex
       rank: readNumber(data.rank),
       weekday: readString(data.weekday),
       link: readString(data.link),
+      tags: readStringArray(data.tags),
     };
   });
 }
@@ -85,6 +95,7 @@ export async function getNaverSnapshotItemsByWeekday(
       rank: readNumber(data.rank),
       weekday: readString(data.weekday),
       link: readString(data.link),
+      tags: readStringArray(data.tags),
     };
   });
 
@@ -112,6 +123,7 @@ export async function getAnyNaverWorkById(id: string): Promise<ExternalWorkItem 
     rank: readNumber(data.rank),
     weekday: readString(data.weekday),
     link: readString(data.link),
+    tags: readStringArray(data.tags),
   };
 }
 
