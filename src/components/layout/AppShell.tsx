@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { signOut } from 'firebase/auth';
 
 import { useAuthUser } from '@/hooks/useAuthUser';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { auth } from '@/lib/firebase';
 
 type AppShellProps = {
@@ -31,6 +32,9 @@ const MOBILE_NAV_ITEMS = [
 export default function AppShell({ title = 'Onepick', children }: AppShellProps) {
   const pathname = usePathname();
   const { user, loading } = useAuthUser();
+  const { profile, loading: profileLoading } = useUserProfile();
+
+  const displayName = profile?.nickname || user?.email || '';
 
   return (
     <div className="min-h-screen bg-white text-zinc-900">
@@ -40,8 +44,8 @@ export default function AppShell({ title = 'Onepick', children }: AppShellProps)
             {title}
           </Link>
           <div className="flex items-center gap-3">
-            {!loading && user?.email ? (
-              <div className="hidden text-sm text-zinc-600 sm:block">{user.email}</div>
+            {!loading && !profileLoading && user && displayName ? (
+              <div className="hidden text-sm text-zinc-600 sm:block">{displayName}</div>
             ) : null}
           <nav className="hidden gap-4 text-sm text-zinc-600 sm:flex">
             {NAV_ITEMS.map((item) => {

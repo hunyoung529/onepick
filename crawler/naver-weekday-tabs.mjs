@@ -44,11 +44,25 @@ async function fillMissingMetadataFromDetail(page, items) {
     return s === '유료작품' || s === '유료' || s === '성인' || s === '성인작품';
   };
 
+  const isValidThumbnailForId = (thumb, id) => {
+    if (!thumb || !id) return false;
+    const u = String(thumb);
+    if (!u.startsWith('http')) return false;
+    // Prefer explicit webtoon thumbnail URLs that include the titleId
+    if (u.includes(`/webtoon/${id}/`)) return true;
+    // Some thumbnails may not include the id in the path; still accept if clearly a webtoon thumbnail.
+    return u.includes('image-comic.pstatic.net') && u.includes('/webtoon/') && u.includes('/thumbnail/');
+  };
+
   const targets = items.filter(
     (it) =>
       it &&
       it.link &&
-      (!it.thumbnail || !it.title || isPlaceholderTitle(it.title) || typeof it.rating !== 'number'),
+      (!it.thumbnail ||
+        !isValidThumbnailForId(it.thumbnail, it.id) ||
+        !it.title ||
+        isPlaceholderTitle(it.title) ||
+        typeof it.rating !== 'number'),
   );
 
   const total = targets.length;
@@ -92,7 +106,7 @@ async function fillMissingMetadataFromDetail(page, items) {
           null;
         return { ogImage, ogTitle, ratingText };
       });
-      if (!it.thumbnail && detailMeta.ogImage) it.thumbnail = detailMeta.ogImage;
+      if ((!it.thumbnail || !isValidThumbnailForId(it.thumbnail, it.id)) && detailMeta.ogImage) it.thumbnail = detailMeta.ogImage;
       if ((!it.title || isPlaceholderTitle(it.title)) && detailMeta.ogTitle) it.title = detailMeta.ogTitle;
       if (typeof it.rating !== 'number' && detailMeta.ratingText) {
         const m = String(detailMeta.ratingText).match(/\b(10(?:\.0+)?|\d(?:\.\d{1,2})?)\b/);
@@ -187,10 +201,10 @@ async function crawlOneWeekdayTab(page, weekday) {
       return best;
     };
 
-    const pickThumbnailFromContainer = (container) => {
+    const pickThumbnailFromContainer = (container, titleId) => {
       if (!container) return null;
-      const img = container.querySelector('img');
-      if (img) {
+      const pickImgUrl = (img) => {
+        if (!img) return null;
         const direct =
           img.getAttribute('src') ||
           img.getAttribute('data-src') ||
@@ -210,6 +224,30 @@ async function crawlOneWeekdayTab(page, weekday) {
             .filter((url) => url?.startsWith('http'));
           if (candidates.length > 0) return candidates[candidates.length - 1];
         }
+        return null;
+      };
+
+      const scoreUrl = (url) => {
+        if (!url) return -1;
+        let s = 0;
+        if (url.includes('image-comic.pstatic.net')) s += 3;
+        if (url.includes('/webtoon/')) s += 3;
+        if (url.includes('/thumbnail/')) s += 3;
+        if (titleId && url.includes(`/webtoon/${titleId}/`)) s += 10;
+        if (/thumbnail_IMAG21/i.test(url)) s += 2;
+        if (/titledescimage/i.test(url)) s += 2;
+        return s;
+      };
+
+      const imgs = Array.from(container.querySelectorAll('img'));
+      const candidates = imgs
+        .map((img) => pickImgUrl(img))
+        .filter((u) => typeof u === 'string' && u.startsWith('http'));
+
+      if (candidates.length > 0) {
+        candidates.sort((a, b) => scoreUrl(b) - scoreUrl(a));
+        const best = candidates[0];
+        if (scoreUrl(best) > 0) return best;
       }
 
       // Try to find thumbnail in picture element or source elements
@@ -275,7 +313,7 @@ async function crawlOneWeekdayTab(page, weekday) {
         container?.querySelector('.info .author')?.textContent?.trim() ||
         null;
 
-      const thumbnail = pickThumbnailFromContainer(container);
+      const thumbnail = pickThumbnailFromContainer(container, titleId);
       const rating = findRating(container);
 
       out.push({

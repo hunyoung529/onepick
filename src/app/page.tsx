@@ -1,11 +1,8 @@
-"use client";
-
 import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
 
 import type { ExternalWorkItem } from '@/lib/external-rankings';
-import { getLatestNaverSnapshotDate, getNaverSnapshotItemsByWeekday } from '@/lib/external-rankings';
+import { getLatestNaverSnapshotDateServer, getNaverSnapshotItemsByWeekdayServer } from '@/lib/external-rankings-server';
 
 function getKstWeekdayKey(d = new Date()): string {
   const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
@@ -32,37 +29,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export default function HomePage() {
-  const [date, setDate] = useState<string | null>(null);
-  const [items, setItems] = useState<ExternalWorkItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>('');
+export const revalidate = 300;
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError('');
-      const latest = await getLatestNaverSnapshotDate();
-      if (cancelled) return;
-      setDate(latest);
-      const wd = getKstWeekdayKey();
-      const nextItems = latest ? await getNaverSnapshotItemsByWeekday(latest, wd, 12) : [];
-      if (cancelled) return;
-      setItems(nextItems);
-      setLoading(false);
-    })().catch((e: unknown) => {
-      if (cancelled) return;
-      setItems([]);
-      if (e instanceof Error) setError(e.message);
-      else setError('데이터를 불러오지 못했습니다. (unknown error)');
-      setLoading(false);
-    });
+export default async function HomePage() {
+  let date: string | null = null;
+  let items: ExternalWorkItem[] = [];
+  let error = '';
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  try {
+    date = await getLatestNaverSnapshotDateServer();
+    const wd = getKstWeekdayKey();
+    items = date ? await getNaverSnapshotItemsByWeekdayServer(date, wd, 12) : [];
+  } catch (e: unknown) {
+    if (e instanceof Error) error = e.message;
+    else error = '데이터를 불러오지 못했습니다. (unknown error)';
+    items = [];
+  }
 
   return (
     <div className="space-y-8">
@@ -73,9 +55,7 @@ export default function HomePage() {
 
       <Section title="오늘의 인기작">
         <div className="grid gap-3 sm:grid-cols-3">
-          {loading ? (
-            <div className="text-sm text-zinc-600">불러오는 중...</div>
-          ) : error ? (
+          {error ? (
             <div className="text-sm text-red-600">
               Firestore 로딩 에러: {error}
               {date ? ` (latest: ${date})` : ''}

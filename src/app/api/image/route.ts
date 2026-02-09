@@ -19,13 +19,22 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: 'Unsupported protocol' }, { status: 400 });
   }
 
+  const allowedHosts = new Set([
+    'image-comic.pstatic.net',
+    'shared-comic.pstatic.net',
+    'ssl.pstatic.net',
+  ]);
+  if (!allowedHosts.has(target.hostname)) {
+    return NextResponse.json({ ok: false, error: 'Host not allowed' }, { status: 400 });
+  }
+
   const upstream = await fetch(target.toString(), {
     headers: {
       'User-Agent': 'Mozilla/5.0',
       Referer: 'https://comic.naver.com/',
       Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
     },
-    cache: 'force-cache',
+    cache: 'no-store',
   });
 
   if (!upstream.ok) {
@@ -45,7 +54,8 @@ export async function GET(req: Request) {
     status: 200,
     headers: {
       'Content-Type': contentType,
-      'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800',
+      // Prevent CDN-level cache bugs (observed on Netlify) where different query URLs may serve the same cached image.
+      'Cache-Control': 'no-store',
     },
   });
 }
