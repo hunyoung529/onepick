@@ -45,6 +45,10 @@ function workKey(platform: string, id: string) {
   return `${platform}_${id}`;
 }
 
+function proxiedImageUrl(url: string): string {
+  return `/api/image?url=${encodeURIComponent(url)}`;
+}
+
 export default function WorkDetailPage({ params }: PageProps) {
   const router = useRouter();
   const { user, loading } = useAuthUser();
@@ -204,7 +208,7 @@ export default function WorkDetailPage({ params }: PageProps) {
         <div className="grid gap-4 sm:grid-cols-[160px_1fr]">
           <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-zinc-100">
             {work.thumbnail ? (
-              <Image src={work.thumbnail} alt={work.title ?? 'thumbnail'} fill className="object-cover" />
+              <Image src={proxiedImageUrl(work.thumbnail)} alt={work.title ?? 'thumbnail'} fill className="object-cover" unoptimized />
             ) : null}
           </div>
 

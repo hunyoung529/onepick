@@ -37,7 +37,33 @@ async function autoScroll(page) {
 }
 
 async function fillMissingMetadataFromDetail(page, items) {
-  const targets = items.filter((it) => it && it.link && (!it.thumbnail || !it.title));
+  const isPlaceholderTitle = (t) => {
+    const s = String(t ?? '').replace(/\s+/g, '').trim();
+    if (!s) return true;
+    if (/^\d+$/.test(s)) return true;
+    return s === '유료작품' || s === '유료' || s === '성인' || s === '성인작품';
+  };
+
+  const targets = items.filter(
+    (it) =>
+      it &&
+      it.link &&
+      (!it.thumbnail || !it.title || isPlaceholderTitle(it.title) || typeof it.rating !== 'number'),
+  );
+
+  const total = targets.length;
+  const startedAt = Date.now();
+  const fmt = (ms) => {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const mm = String(Math.floor(s / 60)).padStart(2, '0');
+    const ss = String(s % 60).padStart(2, '0');
+    return `${mm}:${ss}`;
+  };
+
+  if (total > 0) {
+    console.log(`Detail backfill start: total=${total}`);
+  }
+
   for (const it of targets) {
     try {
       await page.goto(it.link, { waitUntil: 'domcontentloaded' });
@@ -57,12 +83,35 @@ async function fillMissingMetadataFromDetail(page, items) {
           pick('meta[name="og:title"]') ||
           document.querySelector('h2, h3, h1')?.textContent?.trim() ||
           null;
-        return { ogImage, ogTitle };
+        const ratingText =
+          pick('meta[property="og:rating"]') ||
+          pick('meta[name="og:rating"]') ||
+          (document.querySelector('.rating_type em')?.textContent?.trim() ?? null) ||
+          (document.querySelector('[class*="Rating"] em')?.textContent?.trim() ?? null) ||
+          (document.querySelector('[class*="rating"] em')?.textContent?.trim() ?? null) ||
+          null;
+        return { ogImage, ogTitle, ratingText };
       });
       if (!it.thumbnail && detailMeta.ogImage) it.thumbnail = detailMeta.ogImage;
-      if (!it.title && detailMeta.ogTitle) it.title = detailMeta.ogTitle;
+      if ((!it.title || isPlaceholderTitle(it.title)) && detailMeta.ogTitle) it.title = detailMeta.ogTitle;
+      if (typeof it.rating !== 'number' && detailMeta.ratingText) {
+        const m = String(detailMeta.ratingText).match(/\b(10(?:\.0+)?|\d(?:\.\d{1,2})?)\b/);
+        const n = m ? Number.parseFloat(m[1]) : null;
+        if (Number.isFinite(n) && n >= 0 && n <= 10) it.rating = n;
+      }
     } catch {
       // ignore
+    }
+
+    const done = targets.indexOf(it) + 1;
+    if (done === 1 || done % 10 === 0 || done === total) {
+      const elapsed = Date.now() - startedAt;
+      const rate = done > 0 ? done / (elapsed / 1000) : 0;
+      const remain = total - done;
+      const etaMs = rate > 0 ? (remain / rate) * 1000 : 0;
+      console.log(
+        `Detail backfill: ${done}/${total} elapsed=${fmt(elapsed)} rate=${rate.toFixed(2)}/s eta=${fmt(etaMs)}`,
+      );
     }
   }
 }
@@ -70,13 +119,13 @@ async function fillMissingMetadataFromDetail(page, items) {
 async function crawlOneWeekdayTab(page, weekday) {
   const url = `https://comic.naver.com/webtoon?tab=${weekday}`;
   await page.goto(url, { waitUntil: 'networkidle2' });
-  await delay(400);
+  await delay(800); // Increased delay for better loading
   await autoScroll(page);
 
   try {
     await page.waitForFunction(() => {
       return document.querySelectorAll('a[href*="titleId="]').length > 0;
-    }, { timeout: 5000 });
+    }, { timeout: 10000 }); // Increased timeout
   } catch {
     // ignore
   }
@@ -101,11 +150,14 @@ async function crawlOneWeekdayTab(page, weekday) {
     const findRating = (container) => {
       if (!container) return null;
 
+      // Updated selectors for Naver Webtoon's current DOM structure
       const bySelector =
         container.querySelector('.rating_type em')?.textContent?.trim() ||
+        container.querySelector('.RatingScore__Score-sc-1t1n3x9-1')?.textContent?.trim() ||
         container.querySelector('[class*="Rating"] em')?.textContent?.trim() ||
         container.querySelector('[class*="rating"] em')?.textContent?.trim() ||
         container.querySelector('[class*="score"], [class*="Score"]')?.textContent?.trim() ||
+        container.querySelector('.text_num')?.textContent?.trim() ||
         null;
 
       const parse = (t) => {
@@ -160,6 +212,16 @@ async function crawlOneWeekdayTab(page, weekday) {
         }
       }
 
+      // Try to find thumbnail in picture element or source elements
+      const picture = container.querySelector('picture');
+      if (picture) {
+        const pictureImg = picture.querySelector('img');
+        if (pictureImg) {
+          const src = pictureImg.getAttribute('src') || pictureImg.getAttribute('data-src');
+          if (src?.startsWith('http')) return src;
+        }
+      }
+
       const styleEl = container.querySelector('[style*="url("]');
       const style = styleEl?.getAttribute('style') || '';
       const m = style.match(/url\((['"]?)(.*?)\1\)/);
@@ -170,6 +232,9 @@ async function crawlOneWeekdayTab(page, weekday) {
     const anchors = Array.from(document.querySelectorAll('a[href*="titleId="]'));
     const seen = new Set();
 
+    console.log(`Found ${anchors.length} anchors for ${wd}`);
+
+    let rank = 0;
     for (const a of anchors) {
       const absHref = pickHref(a);
       if (!absHref) continue;
@@ -177,9 +242,11 @@ async function crawlOneWeekdayTab(page, weekday) {
       if (!titleId || seen.has(titleId)) continue;
       seen.add(titleId);
 
+      rank += 1;
+
       const container = a.closest('li') || a.closest('div') || a.parentElement;
 
-      const title =
+      const rawTitle =
         a?.getAttribute('title')?.trim() ||
         a?.getAttribute('aria-label')?.trim() ||
         a?.dataset?.title?.trim?.() ||
@@ -188,10 +255,24 @@ async function crawlOneWeekdayTab(page, weekday) {
         container?.querySelector('[class*="title"], [class*="Title"], strong')?.textContent?.trim() ||
         container?.querySelector('[data-title], [data-name]')?.getAttribute('data-title')?.trim() ||
         container?.querySelector('img')?.getAttribute('alt')?.trim() ||
+        container?.querySelector('.info .title')?.textContent?.trim() ||
+        container?.querySelector('.tit')?.textContent?.trim() ||
         null;
+
+      const isPlaceholderTitle = (t) => {
+        const s = String(t ?? '').replace(/\s+/g, '').trim();
+        if (!s) return true;
+        if (/^\d+$/.test(s)) return true;
+        return s === '유료작품' || s === '유료' || s === '성인' || s === '성인작품';
+      };
+
+      const title = isPlaceholderTitle(rawTitle) ? null : rawTitle;
 
       const author =
         container?.querySelector('[class*="author"], [class*="Author"], [class*="desc"] a, [class*="creator"]')?.textContent?.trim() ||
+        container?.querySelector('.author')?.textContent?.trim() ||
+        container?.querySelector('.name')?.textContent?.trim() ||
+        container?.querySelector('.info .author')?.textContent?.trim() ||
         null;
 
       const thumbnail = pickThumbnailFromContainer(container);
@@ -203,6 +284,7 @@ async function crawlOneWeekdayTab(page, weekday) {
         author,
         thumbnail,
         rating: Number.isFinite(rating) ? rating : null,
+        rank,
         weekday: wd,
         link: absHref,
       });

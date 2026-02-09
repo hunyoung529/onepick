@@ -34,9 +34,11 @@ function getToday() {
 }
 
 async function initAdmin() {
-  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+  const serviceAccountPath =
+    getArg('serviceAccountPath', null) ??
+    process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
   if (!serviceAccountPath) {
-    throw new Error('Missing env FIREBASE_SERVICE_ACCOUNT_PATH (path to service account JSON).');
+    throw new Error('Missing env FIREBASE_SERVICE_ACCOUNT_PATH (path to service account JSON) or CLI arg --serviceAccountPath.');
   }
 
   const json = await readJson(serviceAccountPath);
@@ -97,6 +99,7 @@ async function main() {
         author: it.author ?? null,
         thumbnail: it.thumbnail ?? null,
         rating: typeof it.rating === 'number' ? it.rating : null,
+        rank: typeof it.rank === 'number' ? it.rank : null,
         weekday: it.weekday,
         link: it.link ?? null,
         platform: 'naver',
@@ -115,6 +118,7 @@ async function main() {
         author: it.author ?? null,
         thumbnail: it.thumbnail ?? null,
         rating: typeof it.rating === 'number' ? it.rating : null,
+        rank: typeof it.rank === 'number' ? it.rank : null,
         link: it.link ?? null,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },

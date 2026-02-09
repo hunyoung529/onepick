@@ -30,6 +30,10 @@ function readNumber(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+function proxiedImageUrl(url: string): string {
+  return `/api/image?url=${encodeURIComponent(url)}`;
+}
+
 export default function FavoritesPage() {
   const router = useRouter();
   const { user, loading } = useAuthUser();
@@ -83,7 +87,9 @@ export default function FavoritesPage() {
             <Link key={`${it.platform ?? 'naver'}_${it.id}`} href={`/works/${it.id}`} className="rounded-2xl border border-zinc-200 p-4 hover:bg-zinc-50">
               <div className="flex gap-3">
                 <div className="relative h-24 w-20 overflow-hidden rounded-xl bg-zinc-100">
-                  {it.thumbnail ? <Image src={it.thumbnail} alt={it.title ?? 'thumbnail'} fill className="object-cover" /> : null}
+                  {it.thumbnail ? (
+                    <Image src={proxiedImageUrl(it.thumbnail)} alt={it.title ?? 'thumbnail'} fill className="object-cover" unoptimized />
+                  ) : null}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold">{it.title ?? it.id}</div>

@@ -6,6 +6,7 @@ import {
   limit,
   orderBy,
   query,
+  where,
 } from 'firebase/firestore';
 
 import { db } from '@/lib/firebase';
@@ -29,6 +30,7 @@ export type ExternalWorkItem = {
   author: string | null;
   thumbnail: string | null;
   rating: number | null;
+  rank?: number | null;
   weekday: string | null;
   link: string | null;
 };
@@ -49,16 +51,50 @@ export async function getNaverSnapshotItems(date: string, take = 30): Promise<Ex
   return snap.docs.map((d) => {
     const data = asRecord(d.data() as unknown);
     return {
-      platform: 'naver',
+      platform: 'naver' as const,
       id: String((data.id ?? '') as unknown),
       title: readString(data.title),
       author: readString(data.author),
       thumbnail: readString(data.thumbnail),
       rating: readNumber(data.rating),
+      rank: readNumber(data.rank),
       weekday: readString(data.weekday),
       link: readString(data.link),
     };
   });
+}
+
+export async function getNaverSnapshotItemsByWeekday(
+  date: string,
+  weekday: string,
+  take = 30,
+): Promise<ExternalWorkItem[]> {
+  const itemsRef = collection(db, 'externalRankings', 'naver', 'snapshots', date, 'items');
+  const q = query(itemsRef, where('weekday', '==', weekday), limit(Math.max(50, take)));
+  const snap = await getDocs(q);
+
+  const items = snap.docs.map((d) => {
+    const data = asRecord(d.data() as unknown);
+    return {
+      platform: 'naver' as const,
+      id: String((data.id ?? '') as unknown),
+      title: readString(data.title),
+      author: readString(data.author),
+      thumbnail: readString(data.thumbnail),
+      rating: readNumber(data.rating),
+      rank: readNumber(data.rank),
+      weekday: readString(data.weekday),
+      link: readString(data.link),
+    };
+  });
+
+  items.sort((a, b) => {
+    const ar = typeof a.rank === 'number' ? a.rank : Number.POSITIVE_INFINITY;
+    const br = typeof b.rank === 'number' ? b.rank : Number.POSITIVE_INFINITY;
+    return ar - br;
+  });
+
+  return items.slice(0, take);
 }
 
 export async function getAnyNaverWorkById(id: string): Promise<ExternalWorkItem | null> {
@@ -67,12 +103,13 @@ export async function getAnyNaverWorkById(id: string): Promise<ExternalWorkItem 
   if (!snap.exists()) return null;
   const data = asRecord(snap.data() as unknown);
   return {
-    platform: 'naver',
+    platform: 'naver' as const,
     id: String((data.id ?? id) as unknown),
     title: readString(data.title),
     author: readString(data.author),
     thumbnail: readString(data.thumbnail),
     rating: readNumber(data.rating),
+    rank: readNumber(data.rank),
     weekday: readString(data.weekday),
     link: readString(data.link),
   };

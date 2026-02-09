@@ -5,7 +5,18 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import type { ExternalWorkItem } from '@/lib/external-rankings';
-import { getLatestNaverSnapshotDate, getNaverSnapshotItems } from '@/lib/external-rankings';
+import { getLatestNaverSnapshotDate, getNaverSnapshotItemsByWeekday } from '@/lib/external-rankings';
+
+function getKstWeekdayKey(d = new Date()): string {
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const day = kst.getUTCDay();
+  const map = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+  return map[day] ?? 'mon';
+}
+
+function proxiedImageUrl(url: string): string {
+  return `/api/image?url=${encodeURIComponent(url)}`;
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -35,7 +46,8 @@ export default function HomePage() {
       const latest = await getLatestNaverSnapshotDate();
       if (cancelled) return;
       setDate(latest);
-      const nextItems = latest ? await getNaverSnapshotItems(latest, 12) : [];
+      const wd = getKstWeekdayKey();
+      const nextItems = latest ? await getNaverSnapshotItemsByWeekday(latest, wd, 12) : [];
       if (cancelled) return;
       setItems(nextItems);
       setLoading(false);
@@ -81,7 +93,9 @@ export default function HomePage() {
                 className="rounded-2xl border border-zinc-200 p-4 hover:bg-zinc-50"
               >
                 <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-zinc-100">
-                  {it.thumbnail ? <Image src={it.thumbnail} alt={it.title ?? 'thumbnail'} fill className="object-cover" /> : null}
+                  {it.thumbnail ? (
+                    <Image src={proxiedImageUrl(it.thumbnail)} alt={it.title ?? 'thumbnail'} fill className="object-cover" unoptimized />
+                  ) : null}
                 </div>
                 <div className="mt-3 text-sm font-semibold">{it.title ?? it.id}</div>
                 <div className="mt-1 text-xs text-zinc-600">{it.author ?? '-'}</div>
