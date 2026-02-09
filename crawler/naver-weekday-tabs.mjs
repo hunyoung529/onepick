@@ -18,18 +18,58 @@ function uniqBy(items, keyFn) {
 
 const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun', 'dailyPlus', 'finish'];
 
-async function fillMissingThumbnailsFromDetail(page, items) {
-  const targets = items.filter((it) => it && !it.thumbnail && it.link);
+async function autoScroll(page) {
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      let total = 0;
+      const distance = 500;
+      const timer = setInterval(() => {
+        window.scrollBy(0, distance);
+        total += distance;
+        if (total >= document.body.scrollHeight) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 100);
+    });
+  });
+  await page.evaluate(() => window.scrollTo(0, 0));
+}
+
+async function fillMetadataFromDetail(page, items, { enrichAll = false } = {}) {
+  const targets = items.filter((it) => it && it.link && (enrichAll || !it.thumbnail || !it.title || !it.genres?.length));
   for (const it of targets) {
     try {
       await page.goto(it.link, { waitUntil: 'domcontentloaded' });
       await delay(150);
-      const ogImage = await page.evaluate(() => {
-        const meta = document.querySelector('meta[property="og:image"], meta[name="og:image"]');
-        const content = meta?.getAttribute?.('content');
-        return content ? String(content) : null;
+      const detailMeta = await page.evaluate(() => {
+        const pick = (selector) => {
+          const meta = document.querySelector(selector);
+          const content = meta?.getAttribute?.('content');
+          return content ? String(content) : null;
+        };
+        const ogImage =
+          pick('meta[property="og:image"]') ||
+          pick('meta[name="og:image"]') ||
+          pick('meta[name="twitter:image"]');
+        const ogTitle =
+          pick('meta[property="og:title"]') ||
+          pick('meta[name="og:title"]') ||
+          document.querySelector('h2, h3, h1')?.textContent?.trim() ||
+          null;
+        const tags = Array.from(
+          document.querySelectorAll('[class*="tag"], [class*="Tag"], a[href*="genre"], a[href*="tag"]'),
+        )
+          .map((el) => el.textContent?.trim() || '')
+          .filter((text) => text.startsWith('#'))
+          .map((text) => text.replace(/^#+/, '').trim())
+          .filter(Boolean);
+        const genres = Array.from(new Set(tags));
+        return { ogImage, ogTitle, genres };
       });
-      if (ogImage) it.thumbnail = ogImage;
+      if (detailMeta.ogImage && (enrichAll || !it.thumbnail)) it.thumbnail = detailMeta.ogImage;
+      if (detailMeta.ogTitle && (enrichAll || !it.title)) it.title = detailMeta.ogTitle;
+      if (detailMeta.genres?.length) it.genres = detailMeta.genres;
     } catch {
       // ignore
     }
@@ -40,6 +80,7 @@ async function crawlOneWeekdayTab(page, weekday) {
   const url = `https://comic.naver.com/webtoon?tab=${weekday}`;
   await page.goto(url, { waitUntil: 'networkidle2' });
   await delay(400);
+  await autoScroll(page);
 
   try {
     await page.waitForFunction(() => {
@@ -107,10 +148,18 @@ async function crawlOneWeekdayTab(page, weekday) {
       if (!container) return null;
       const img = container.querySelector('img');
       if (img) {
-        const direct = img.getAttribute('src') || img.getAttribute('data-src');
+        const direct =
+          img.getAttribute('src') ||
+          img.getAttribute('data-src') ||
+          img.getAttribute('data-lazy') ||
+          img.getAttribute('data-original') ||
+          img.getAttribute('data-url');
         if (direct?.startsWith('http')) return direct;
 
-        const srcset = img.getAttribute('srcset') || img.getAttribute('data-srcset');
+        const srcset =
+          img.getAttribute('srcset') ||
+          img.getAttribute('data-srcset') ||
+          img.getAttribute('data-src-set');
         if (srcset) {
           const candidates = srcset
             .split(',')
@@ -140,9 +189,13 @@ async function crawlOneWeekdayTab(page, weekday) {
       const container = a.closest('li') || a.closest('div') || a.parentElement;
 
       const title =
-        a?.textContent?.trim() ||
         a?.getAttribute('title')?.trim() ||
+        a?.getAttribute('aria-label')?.trim() ||
+        a?.dataset?.title?.trim?.() ||
+        a?.dataset?.name?.trim?.() ||
+        a?.textContent?.trim() ||
         container?.querySelector('[class*="title"], [class*="Title"], strong')?.textContent?.trim() ||
+        container?.querySelector('[data-title], [data-name]')?.getAttribute('data-title')?.trim() ||
         container?.querySelector('img')?.getAttribute('alt')?.trim() ||
         null;
 
@@ -188,10 +241,15 @@ async function main() {
 
     const items = uniqBy(all, (x) => `${x.weekday}:${x.id}`);
     const missingThumbs = items.filter((x) => x && !x.thumbnail).length;
+    const missingTitles = items.filter((x) => x && !x.title).length;
+    const missingGenres = items.filter((x) => x && !x.genres?.length).length;
+    const enrichAll = process.argv.includes('--enrich-all');
 
-    if (missingThumbs > 0) {
-      console.log(`Filling missing thumbnails from detail pages: missing=${missingThumbs}`);
-      await fillMissingThumbnailsFromDetail(page, items);
+    if (enrichAll || missingThumbs > 0 || missingTitles > 0 || missingGenres > 0) {
+      console.log(
+        `Filling metadata from detail pages: missingThumbs=${missingThumbs}, missingTitles=${missingTitles}, missingGenres=${missingGenres}, enrichAll=${enrichAll}`,
+      );
+      await fillMetadataFromDetail(page, items, { enrichAll });
     }
 
     const outDir = path.resolve(process.cwd(), 'data');
