@@ -48,9 +48,7 @@ async function fillMissingMetadataFromDetail(page, items) {
     if (!thumb || !id) return false;
     const u = String(thumb);
     if (!u.startsWith('http')) return false;
-    // Prefer explicit webtoon thumbnail URLs that include the titleId
     if (u.includes(`/webtoon/${id}/`)) return true;
-    // Some thumbnails may not include the id in the path; still accept if clearly a webtoon thumbnail.
     return u.includes('image-comic.pstatic.net') && u.includes('/webtoon/') && u.includes('/thumbnail/');
   };
 
@@ -164,7 +162,6 @@ async function crawlOneWeekdayTab(page, weekday) {
     const findRating = (container) => {
       if (!container) return null;
 
-      // Updated selectors for Naver Webtoon's current DOM structure
       const bySelector =
         container.querySelector('.rating_type em')?.textContent?.trim() ||
         container.querySelector('.RatingScore__Score-sc-1t1n3x9-1')?.textContent?.trim() ||
@@ -213,10 +210,7 @@ async function crawlOneWeekdayTab(page, weekday) {
           img.getAttribute('data-url');
         if (direct?.startsWith('http')) return direct;
 
-        const srcset =
-          img.getAttribute('srcset') ||
-          img.getAttribute('data-srcset') ||
-          img.getAttribute('data-src-set');
+        const srcset = img.getAttribute('srcset') || img.getAttribute('data-srcset');
         if (srcset) {
           const candidates = srcset
             .split(',')
@@ -250,7 +244,6 @@ async function crawlOneWeekdayTab(page, weekday) {
         if (scoreUrl(best) > 0) return best;
       }
 
-      // Try to find thumbnail in picture element or source elements
       const picture = container.querySelector('picture');
       if (picture) {
         const pictureImg = picture.querySelector('img');
@@ -291,7 +284,6 @@ async function crawlOneWeekdayTab(page, weekday) {
         a?.dataset?.name?.trim?.() ||
         a?.textContent?.trim() ||
         container?.querySelector('[class*="title"], [class*="Title"], strong')?.textContent?.trim() ||
-        container?.querySelector('[data-title], [data-name]')?.getAttribute('data-title')?.trim() ||
         container?.querySelector('img')?.getAttribute('alt')?.trim() ||
         container?.querySelector('.info .title')?.textContent?.trim() ||
         container?.querySelector('.tit')?.textContent?.trim() ||
